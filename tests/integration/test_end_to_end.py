@@ -29,6 +29,13 @@ class TestEndToEndAPI:
         # Check that it returns Prometheus format
         content = response.text
         assert "titanic_prediction_requests_total" in content
+        assert "titanic_prediction_errors_total" in content
+        assert "titanic_prediction_history_count" in content
+        
+        # Test that metrics are properly formatted
+        lines = content.split('\n')
+        metric_lines = [line for line in lines if line.startswith('titanic_')]
+        assert len(metric_lines) >= 3  # At least 3 metrics should be present
     
     def test_history_endpoint(self):
         """Test the history endpoint."""

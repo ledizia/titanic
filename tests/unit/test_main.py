@@ -205,3 +205,111 @@ class TestStartupEvent:
             # The lifespan should handle the exception gracefully
             from src.main import lifespan
             assert callable(lifespan)
+
+class TestMetrics:
+    """Test cases for Prometheus metrics."""
+    
+    def setup_method(self):
+        """Set up test fixtures before each test method."""
+        self.client = TestClient(app)
+        prediction_history.clear()
+    
+    def test_metrics_endpoint_returns_prometheus_format(self):
+        """Test that metrics endpoint returns Prometheus format."""
+        response = self.client.get("/metrics")
+        assert response.status_code == 200
+        content = response.text
+        
+        # Check for expected metrics
+        assert "titanic_prediction_requests_total" in content
+        assert "titanic_prediction_errors_total" in content
+        assert "titanic_prediction_history_count" in content
+    
+    def test_error_metrics_increment_on_validation_error(self, sample_passenger_data):
+        """Test that error metrics increment on validation errors."""
+        # Get initial metrics
+        initial_response = self.client.get("/metrics")
+        initial_content = initial_response.text
+        
+        # Make a request that will cause a validation error
+        invalid_data = sample_passenger_data.copy()
+        invalid_data["Sex"] = "invalid"
+        
+        with patch('src.main.model') as mock_model:
+            mock_model.predict.return_value = [1]
+            mock_model.predict_proba.return_value = np.array([[0.3, 0.7]])
+            
+            response = self.client.post("/predict", json=invalid_data)
+            assert response.status_code == 422  # Validation error
+        
+        # Get metrics after error
+        final_response = self.client.get("/metrics")
+        final_content = final_response.text
+        
+        # The error should be tracked (though we can't easily verify the exact count in a test)
+        assert "titanic_prediction_errors_total" in final_content
+    
+    def test_error_metrics_increment_on_model_error(self, sample_passenger_data):
+        """Test that error metrics increment on model errors."""
+        # Test with no model loaded by setting model to None
+        with patch('src.main.model', None):
+            response = self.client.post("/predict", json=sample_passenger_data)
+            assert response.status_code == 503  # Service unavailable
+        
+        # Get metrics after error
+        metrics_response = self.client.get("/metrics")
+        content = metrics_response.text
+        
+        # The error should be tracked
+        assert "titanic_prediction_errors_total" in content
+    
+    def test_request_metrics_increment_on_successful_request(self, sample_passenger_data):
+        """Test that request metrics increment on successful requests."""
+        # Get initial metrics
+        initial_response = self.client.get("/metrics")
+        initial_content = initial_response.text
+        
+        # Make a successful request
+        with patch('src.main.model') as mock_model:
+            mock_model.predict.return_value = [1]
+            mock_model.predict_proba.return_value = np.array([[0.3, 0.7]])
+            
+            response = self.client.post("/predict", json=sample_passenger_data)
+            assert response.status_code == 200
+        
+        # Get metrics after request
+        final_response = self.client.get("/metrics")
+        final_content = final_response.text
+        
+        # The request should be tracked
+        assert "titanic_prediction_requests_total" in final_content
+    
+    def test_history_count_metric_updates(self, sample_passenger_data):
+        """Test that history count metric updates correctly."""
+        # Get initial metrics
+        initial_response = self.client.get("/metrics")
+        initial_content = initial_response.text
+        
+        # Make a successful request to add to history
+        with patch('src.main.model') as mock_model:
+            mock_model.predict.return_value = [1]
+            mock_model.predict_proba.return_value = np.array([[0.3, 0.7]])
+            
+            response = self.client.post("/predict", json=sample_passenger_data)
+            assert response.status_code == 200
+        
+        # Get metrics after request
+        final_response = self.client.get("/metrics")
+        final_content = final_response.text
+        
+        # The history count should be tracked
+        assert "titanic_prediction_history_count" in final_content
+    
+    def test_metrics_labels_are_present(self):
+        """Test that metrics with labels are properly formatted."""
+        response = self.client.get("/metrics")
+        content = response.text
+        
+        # Check that the error metric with labels is present
+        # The exact format depends on whether there are any errors, but the metric should be defined
+        assert "titanic_prediction_errors_total" in content

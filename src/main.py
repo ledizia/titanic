@@ -8,8 +8,8 @@ from src.preprocess_data import Preprocessor
 import logging
 from datetime import datetime
 from contextlib import asynccontextmanager
-from prometheus_client import Counter, generate_latest, Gauge 
-from starlette.responses import PlainTextResponse 
+from prometheus_client import Counter, generate_latest, Gauge
+from starlette.responses import PlainTextResponse
 
 from pythonjsonlogger import jsonlogger
 
@@ -37,10 +37,11 @@ PREDICTION_REQUESTS_TOTAL = Counter(
     'Total prediction requests for the Titanic API'
 )
 
-# Counter for prediction errors
+# Counter for prediction errors with labels for categorization
 PREDICTION_ERRORS_TOTAL = Counter(
     'titanic_prediction_errors_total',
-    'Total errors occurred during predictions in the Titanic API'
+    'Total errors occurred during predictions in the Titanic API',
+    ['error_type', 'status_code']
 )
 
 # Gauge for the number of predictions in history (example of state metric)
@@ -93,9 +94,11 @@ def load_artifact(model_path: str):
         model = joblib.load(model_path)
         logger.info(f"Model loaded successfully from: {model_path}")
     except FileNotFoundError as e:
+        PREDICTION_ERRORS_TOTAL.labels(error_type="model_not_found", status_code="404").inc()
         logger.error(f"Error loading artifacts: {e}")
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
+        PREDICTION_ERRORS_TOTAL.labels(error_type="model_load_error", status_code="500").inc()
         logger.error(f"Error loading artifacts: {e}")
         raise HTTPException(status_code=500, detail=f"Error loading artifacts: {e}")
 
@@ -147,12 +150,15 @@ async def predict(passenger: PassengerData):
     - **passenger**: JSON object with passenger data.
     """
     PREDICTION_REQUESTS_TOTAL.inc() # Increment request counter
-    if model is None:
-        logger.error("Prediction attempt without loaded model.")
-        raise HTTPException(status_code=503, detail="Model not loaded. Please load a model first.")
-
-    logger.info(f"Request to /predict received for passenger: {passenger.Name}")
+    
     try:
+        if model is None:
+            logger.error("Prediction attempt without loaded model.")
+            PREDICTION_ERRORS_TOTAL.labels(error_type="model_not_loaded", status_code="503").inc()
+            raise HTTPException(status_code=503, detail="Model not loaded. Please load a model first.")
+
+        logger.info(f"Request to /predict received for passenger: {passenger.Name}")
+        
         # Convert input data to a Pandas DataFrame
         preprocessor = Preprocessor()
         input_df = pd.DataFrame([passenger.dict()])
@@ -190,11 +196,14 @@ async def predict(passenger: PassengerData):
             "message": "Prediction completed successfully."
         }
     except ValueError as e:
-        PREDICTION_ERRORS_TOTAL.inc()
+        PREDICTION_ERRORS_TOTAL.labels(error_type="validation_error", status_code="400").inc()
         logger.error(f"Error in data validation or processing: {e}")
         raise HTTPException(status_code=400, detail=f"Error in input data: {e}")
+    except HTTPException:
+        # Re-raise HTTPExceptions without incrementing counters 
+        raise
     except Exception as e:
-        PREDICTION_ERRORS_TOTAL.inc()
+        PREDICTION_ERRORS_TOTAL.labels(error_type="internal_error", status_code="500").inc()
         logger.error(f"Unexpected error during prediction: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
 
@@ -209,9 +218,15 @@ async def load_new_model(request: LoadModelRequest):
         load_artifact(request.model_path)
         return {"status": "success", "message": "New model loaded successfully."}
     except HTTPException as e:
+        # Track errors based on status code
+        if e.status_code >= 400 and e.status_code < 500:
+            PREDICTION_ERRORS_TOTAL.labels(error_type="client_error", status_code=str(e.status_code)).inc()
+        elif e.status_code >= 500:
+            PREDICTION_ERRORS_TOTAL.labels(error_type="server_error", status_code=str(e.status_code)).inc()
         # Re-raise HTTPException so FastAPI can catch it and return the appropriate error
         raise e
     except Exception as e:
+        PREDICTION_ERRORS_TOTAL.labels(error_type="load_error", status_code="500").inc()
         logger.error(f"Error loading new model: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error loading new model: {e}")
 

@@ -104,17 +104,6 @@ curl -X POST "http://localhost:8000/predict" \
 }
 ```
 
-## 📊 API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | API health check |
-| `/predict` | POST | Make survival prediction |
-| `/load` | POST | Load new model |
-| `/history` | GET | Get prediction history |
-| `/metrics` | GET | Prometheus metrics |
-| `/docs` | GET | API documentation |
-
 ## 🧪 Testing
 
 ### Running Tests
@@ -127,6 +116,38 @@ pytest
 pytest tests/unit/           # Unit tests only
 pytest tests/integration/    # Integration tests only
 ```
+
+## 📊 API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | API health check |
+| `/predict` | POST | Make survival prediction |
+| `/load` | POST | Load new model |
+| `/history` | GET | Get prediction history |
+| `/metrics` | GET | Prometheus metrics |
+| `/docs` | GET | API documentation |
+
+## 📈 Monitoring
+
+### Prometheus Metrics
+
+The API exposes comprehensive Prometheus metrics for monitoring and alerting:
+
+- **Request Metrics**: Total requests
+- **Error Metrics**: Categorized errors with labels for error type and status code
+- **State Metrics**: Prediction history count
+
+#### Key Metrics:
+- `titanic_prediction_requests_total` - Total prediction requests
+- `titanic_prediction_errors_total` - Errors with labels for categorization (`error_type`, `status_code`)
+
+#### Error Categories:
+- `validation_error` - Data validation errors
+- `internal_error` - Unexpected server errors
+- `model_not_loaded` - Model not available
+- `model_not_found` - Model file not found
+- `model_load_error` - Model loading failures
 
 ## 📝 License
 
