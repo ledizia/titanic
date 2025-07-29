@@ -51,34 +51,157 @@ PREDICTION_HISTORY_COUNT = Gauge(
 )
 
 class PassengerData(BaseModel):
-    Pclass: int = Field(..., description="Passenger class (1, 2, 3)", ge=1, le=3)
-    Name: str = Field(..., description="Passenger name")
-    Sex: str = Field(..., description="Passenger sex (male, female)")
-    Age: float = Field(..., description="Passenger age", ge=0, le=100)
-    SibSp: int = Field(..., description="Number of siblings/spouses aboard", ge=0)
-    Parch: int = Field(..., description="Number of parents/children aboard", ge=0)
-    Ticket: str = Field(..., description="Ticket number")
-    Fare: float = Field(..., description="Fare paid", ge=0)
-    Cabin: str = Field(..., description="Cabin number (can be empty or 'NaN')", json_schema_extra={"example": "C85"})
-    Embarked: str = Field(..., description="Port of embarkation (C, Q, S)")
+    """
+    Passenger data model for Titanic survival prediction.
+    
+    This model defines the structure and validation rules for passenger data
+    used in survival predictions. All fields are required and have specific
+    validation constraints.
+    
+    **Field Descriptions:**
+    - `Pclass`: Passenger class (1=First, 2=Second, 3=Third)
+    - `Name`: Passenger's full name (used for title extraction)
+    - `Sex`: Gender (male/female)
+    - `Age`: Age in years (0-100)
+    - `SibSp`: Number of siblings/spouses aboard (0+)
+    - `Parch`: Number of parents/children aboard (0+)
+    - `Ticket`: Ticket number (string)
+    - `Fare`: Fare paid (0+)
+    - `Cabin`: Cabin number (optional, can be empty)
+    - `Embarked`: Port of embarkation (C=Cherbourg, Q=Queenstown, S=Southampton)
+    
+    **Validation Rules:**
+    - Pclass must be 1, 2, or 3
+    - Age must be between 0 and 100
+    - SibSp and Parch must be non-negative
+    - Fare must be non-negative
+    - Sex must be 'male' or 'female'
+    - Embarked must be 'C', 'Q', or 'S'
+    
+    **Example:**
+    ```json
+    {
+        "Pclass": 3,
+        "Name": "Braund, Mr. Owen Harris",
+        "Sex": "male",
+        "Age": 22.0,
+        "SibSp": 1,
+        "Parch": 0,
+        "Ticket": "A/5 21171",
+        "Fare": 7.25,
+        "Cabin": "",
+        "Embarked": "S"
+    }
+    ```
+    """
+    Pclass: int = Field(
+        ..., 
+        description="Passenger class (1=First, 2=Second, 3=Third)", 
+        ge=1, 
+        le=3,
+        example=3
+    )
+    Name: str = Field(
+        ..., 
+        description="Passenger's full name (used for title extraction)",
+        example="Braund, Mr. Owen Harris"
+    )
+    Sex: str = Field(
+        ..., 
+        description="Passenger gender (male/female)",
+        example="male"
+    )
+    Age: float = Field(
+        ..., 
+        description="Passenger age in years", 
+        ge=0, 
+        le=100,
+        example=22.0
+    )
+    SibSp: int = Field(
+        ..., 
+        description="Number of siblings/spouses aboard", 
+        ge=0,
+        example=1
+    )
+    Parch: int = Field(
+        ..., 
+        description="Number of parents/children aboard", 
+        ge=0,
+        example=0
+    )
+    Ticket: str = Field(
+        ..., 
+        description="Ticket number",
+        example="A/5 21171"
+    )
+    Fare: float = Field(
+        ..., 
+        description="Fare paid", 
+        ge=0,
+        example=7.25
+    )
+    Cabin: str = Field(
+        ..., 
+        description="Cabin number (can be empty or 'NaN')", 
+        json_schema_extra={"example": "C85"},
+        example=""
+    )
+    Embarked: str = Field(
+        ..., 
+        description="Port of embarkation (C=Cherbourg, Q=Queenstown, S=Southampton)",
+        example="S"
+    )
     
     @validator('Sex')
     def validate_sex(cls, v):
+        """Validate that sex is either 'male' or 'female'."""
         if v not in ['male', 'female']:
             raise ValueError('Sex must be either "male" or "female"')
         return v
     
     @validator('Embarked')
     def validate_embarked(cls, v):
+        """Validate that embarked port is valid."""
         if v not in ['C', 'Q', 'S']:
             raise ValueError('Embarked must be one of: C, Q, S')
         return v
 
 class LoadModelRequest(BaseModel):
-    model_path: str = Field(..., description="Path to the .pkl file of the new model")
+    """
+    Model loading request for dynamic model updates.
+    
+    This model defines the structure for loading new machine learning models
+    without restarting the API. The model path must point to a valid .pkl file.
+    
+    **Field Descriptions:**
+    - `model_path`: Complete file path to the model file (.pkl format)
+    
+    **Validation Rules:**
+    - model_path cannot be empty or whitespace-only
+    - model_path should point to a valid .pkl file
+    - File must exist and be readable
+    
+    **Example:**
+    ```json
+    {
+        "model_path": "/path/to/new_titanic_model.pkl"
+    }
+    ```
+    
+    **Supported Formats:**
+    - Pickle (.pkl) files containing scikit-learn models
+    - Models must have `predict()` and `predict_proba()` methods
+    """
+    model_path: str = Field(
+        ..., 
+        description="Complete file path to the model file (.pkl format)",
+        example="/path/to/new_titanic_model.pkl"
+    )
     
     @validator('model_path')
     def validate_model_path(cls, v):
+        """Validate that model path is not empty."""
         if not v or not v.strip():
             raise ValueError('model_path cannot be empty')
         return v
@@ -124,30 +247,240 @@ app = FastAPI(
 
 # --- API Endpoints ---
 
-@app.get("/health", summary="Check API status")
+@app.get(
+    "/health", 
+    summary="Health Check",
+    description="Check the health status of the Titanic Survival Prediction API",
+    response_description="API health status and model loading state",
+    tags=["Monitoring"],
+    responses={
+        200: {
+            "description": "API is healthy",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "API is healthy",
+                        "model_loaded": True
+                    }
+                }
+            }
+        }
+    }
+)
 async def health_check():
     """
-    Endpoint for API status check.
-    Returns 200 OK if the API is working.
+    Check the health status of the Titanic Survival Prediction API.
+    
+    This endpoint provides information about:
+    - API operational status
+    - Model loading state
+    
+    **Returns:**
+    - `status`: Current API status message
+    - `model_loaded`: Boolean indicating if the ML model is loaded and ready
+    
+    **Use Cases:**
+    - Health monitoring and alerting
+    - Load balancer health checks
+    - Service discovery
+    
+    **Example Response:**
+    ```json
+    {
+        "status": "API is healthy",
+        "model_loaded": true
+    }
+    ```
     """
     logger.info("Request to /health received.")
     return {"status": "API is healthy", "model_loaded": model is not None}
 
-@app.get("/metrics", summary="Expose metrics for Prometheus")
+@app.get(
+    "/metrics", 
+    summary="Prometheus Metrics",
+    description="Expose monitoring metrics in Prometheus format for observability",
+    response_description="Prometheus-formatted metrics",
+    tags=["Monitoring"],
+    responses={
+        200: {
+            "description": "Prometheus metrics",
+        }
+    }
+)
 async def metrics():
     """
-    Endpoint that exposes monitoring metrics in Prometheus format.
+    Expose monitoring metrics in Prometheus format for observability.
+    
+    This endpoint provides comprehensive metrics for monitoring the API:
+    - **Request Metrics**: Total number of prediction requests
+    - **Error Metrics**: Categorized errors with labels (error_type, status_code)
+    - **State Metrics**: Current prediction history count
+    
+    **Available Metrics:**
+    - `titanic_prediction_requests_total`: Counter for total requests
+    - `titanic_prediction_errors_total`: Counter for errors with labels
+    - `titanic_prediction_history_count`: Gauge for history size
+    
+    **Error Categories:**
+    - `validation_error`: Data validation errors (400)
+    - `internal_error`: Unexpected server errors (500)
+    - `model_not_loaded`: Model not available (503)
+    - `model_not_found`: Model file not found (404)
+    - `model_load_error`: Model loading failures (500)
+    
+    **Use Cases:**
+    - Prometheus monitoring integration
+    - Grafana dashboard data source
+    - Alerting and alerting rules
+    - Performance monitoring
+    
+    **Example Usage:**
+    ```bash
+    curl http://localhost:8000/metrics
+    ```
     """
     # Updates the Gauge with the current history size
     PREDICTION_HISTORY_COUNT.set(len(prediction_history))
     logger.info("Request to /metrics received. Serving Prometheus metrics.")
     return PlainTextResponse(generate_latest().decode('utf-8'), media_type="text/plain")
 
-@app.post("/predict", summary="Perform a survival prediction")
+@app.post(
+    "/predict", 
+    summary="Predict Survival",
+    description="Predict survival probability for a Titanic passenger based on their characteristics",
+    response_description="Prediction result with survival probability and confidence scores",
+    tags=["Predictions"],
+    responses={
+        200: {
+            "description": "Successful prediction",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "prediction": 0,
+                        "prediction_label": "Not Survived",
+                        "probabilities": [0.7, 0.3],
+                        "message": "Prediction completed successfully."
+                    }
+                }
+            }
+        },
+        400: {
+            "description": "Bad request - validation error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Error in input data: Invalid passenger data"
+                    }
+                }
+            }
+        },
+        422: {
+            "description": "Validation error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": [
+                            {
+                                "loc": ["body", "Sex"],
+                                "msg": "value is not a valid enumeration member; permitted: 'male', 'female'",
+                                "type": "type_error.enum; enum_values allowed_values"
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        503: {
+            "description": "Service unavailable - model not loaded",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Model not loaded. Please load a model first."
+                    }
+                }
+            }
+        },
+        500: {
+            "description": "Internal server error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Internal server error: Unexpected error during prediction"
+                    }
+                }
+            }
+        }
+    }
+)
 async def predict(passenger: PassengerData):
     """
-    Receives passenger data in JSON format and returns survival prediction.
-    - **passenger**: JSON object with passenger data.
+    Predict survival probability for a Titanic passenger.
+    
+    This endpoint uses a trained machine learning model to predict whether a passenger
+    would have survived the Titanic disaster based on their characteristics.
+    
+    **Features:**
+    - Real-time prediction using trained ML model
+    - Probability scores for both survival and non-survival
+    - Automatic feature engineering and preprocessing
+    - Prediction history tracking
+    - Comprehensive error handling
+    
+    **Input Parameters:**
+    - `Pclass`: Passenger class (1=First, 2=Second, 3=Third)
+    - `Name`: Passenger's full name
+    - `Sex`: Gender (male/female)
+    - `Age`: Age in years (0-100)
+    - `SibSp`: Number of siblings/spouses aboard
+    - `Parch`: Number of parents/children aboard
+    - `Ticket`: Ticket number
+    - `Fare`: Fare paid
+    - `Cabin`: Cabin number (optional)
+    - `Embarked`: Port of embarkation (C=Cherbourg, Q=Queenstown, S=Southampton)
+    
+    **Returns:**
+    - `prediction`: Binary prediction (0=Not Survived, 1=Survived)
+    - `prediction_label`: Human-readable prediction label
+    - `probabilities`: Probability scores [not_survived, survived]
+    - `message`: Success message
+    
+    **Error Handling:**
+    - 400: Data validation or processing errors
+    - 422: Input validation errors (invalid field values)
+    - 503: Model not loaded
+    - 500: Internal server errors
+    
+    **Example Request:**
+    ```json
+    {
+        "Pclass": 3,
+        "Name": "Braund, Mr. Owen Harris",
+        "Sex": "male",
+        "Age": 22.0,
+        "SibSp": 1,
+        "Parch": 0,
+        "Ticket": "A/5 21171",
+        "Fare": 7.25,
+        "Cabin": "",
+        "Embarked": "S"
+    }
+    ```
+    
+    **Example Response:**
+    ```json
+    {
+        "prediction": 0,
+        "prediction_label": "Not Survived",
+        "probabilities": [0.7, 0.3],
+        "message": "Prediction completed successfully."
+    }
+    ```
+    
+    **Model Information:**
+    - Uses Random Forest classifier
+    - Features include: passenger class, age, family size, title extraction
+    - Trained on historical Titanic passenger data
+    - Provides both prediction and probability scores
     """
     PREDICTION_REQUESTS_TOTAL.inc() # Increment request counter
     
@@ -207,11 +540,128 @@ async def predict(passenger: PassengerData):
         logger.error(f"Unexpected error during prediction: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
 
-@app.post("/load", summary="Load a new model")
+@app.post(
+    "/load", 
+    summary="Load Model",
+    description="Load a new machine learning model from a file path",
+    response_description="Model loading status and result message",
+    tags=["Model Management"],
+    responses={
+        200: {
+            "description": "Model loaded successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "success",
+                        "message": "New model loaded successfully."
+                    }
+                }
+            }
+        },
+        400: {
+            "description": "Bad request - invalid model path",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "model_path cannot be empty"
+                    }
+                }
+            }
+        },
+        404: {
+            "description": "Model file not found",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Model not found at: /path/to/model.pkl"
+                    }
+                }
+            }
+        },
+        422: {
+            "description": "Validation error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": [
+                            {
+                                "loc": ["body", "model_path"],
+                                "msg": "field required",
+                                "type": "value_error.missing"
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        500: {
+            "description": "Internal server error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Error loading new model: Invalid model format"
+                    }
+                }
+            }
+        }
+    }
+)
 async def load_new_model(request: LoadModelRequest):
     """
-    Allows loading a new model from file paths.
-    - **model_path**: Complete path to the .pkl file of the model.
+    Load a new machine learning model from a file path.
+    
+    This endpoint allows dynamic model loading without restarting the API.
+    The new model will be used for all subsequent predictions.
+    
+    **Features:**
+    - Dynamic model loading without API restart
+    - Support for different model formats (.pkl files)
+    - Validation of model file existence
+    - Error handling for invalid models
+    - Automatic model replacement
+    
+    **Input Parameters:**
+    - `model_path`: Complete file path to the model file (.pkl format)
+    
+    **Returns:**
+    - `status`: Loading status ("success" or "error")
+    - `message`: Descriptive message about the loading result
+    
+    **Error Handling:**
+    - 400: Invalid model path (empty or whitespace)
+    - 404: Model file not found at specified path
+    - 422: Validation errors in request body
+    - 500: Model loading errors (corrupted file, invalid format)
+    
+    **Supported Model Formats:**
+    - Pickle (.pkl) files containing scikit-learn models
+    - Models must have `predict()` and `predict_proba()` methods
+    
+    **Example Request:**
+    ```json
+    {
+        "model_path": "/path/to/new_titanic_model.pkl"
+    }
+    ```
+    
+    **Example Response:**
+    ```json
+    {
+        "status": "success",
+        "message": "New model loaded successfully."
+    }
+    ```
+    
+    **Use Cases:**
+    - Model updates without downtime
+    - A/B testing different models
+    - Model version management
+    - Hot-swapping improved models
+    
+    **Security Considerations:**
+    - Validate model file integrity
+    - Ensure model compatibility
+    - Monitor model performance after loading
     """
     logger.info(f"Request to /load received. Attempting to load model from: {request.model_path}")
     try:
@@ -231,10 +681,125 @@ async def load_new_model(request: LoadModelRequest):
         raise HTTPException(status_code=500, detail=f"Error loading new model: {e}")
 
 
-@app.get("/history", summary="Returns the history of prediction calls")
+@app.get(
+    "/history", 
+    summary="Prediction History",
+    description="Retrieve the history of all prediction calls made to the API",
+    response_description="List of prediction records with timestamps and results",
+    tags=["Monitoring"],
+    responses={
+        200: {
+            "description": "Prediction history",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "history": [
+                            {
+                                "timestamp": "2024-01-15T10:30:45.123456",
+                                "input_data": {
+                                    "Pclass": 3,
+                                    "Name": "Braund, Mr. Owen Harris",
+                                    "Sex": "male",
+                                    "Age": 22.0,
+                                    "SibSp": 1,
+                                    "Parch": 0,
+                                    "Ticket": "A/5 21171",
+                                    "Fare": 7.25,
+                                    "Cabin": "",
+                                    "Embarked": "S"
+                                },
+                                "prediction": 0,
+                                "prediction_label": "Not Survived",
+                                "probabilities": [0.7, 0.3]
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    }
+)
 async def get_history():
     """
-    Returns the history of all prediction calls made to the API.
+    Retrieve the history of all prediction calls made to the API.
+    
+    This endpoint provides access to the complete prediction history, including
+    input data, predictions, and metadata for each request.
+    
+    **Features:**
+    - Complete prediction history with timestamps
+    - Original input data for each prediction
+    - Prediction results and probability scores
+    - Chronological ordering of predictions
+    - In-memory storage (resets on API restart)
+    
+    **Returns:**
+    - `history`: Array of prediction records, each containing:
+        - `timestamp`: ISO format timestamp of the prediction
+        - `input_data`: Original passenger data used for prediction
+        - `prediction`: Binary prediction result (0/1)
+        - `prediction_label`: Human-readable prediction ("Survived"/"Not Survived")
+        - `probabilities`: Probability scores [not_survived, survived]
+    
+    **History Record Structure:**
+    ```json
+    {
+        "timestamp": "2024-01-15T10:30:45.123456",
+        "input_data": {
+            "Pclass": 3,
+            "Name": "Braund, Mr. Owen Harris",
+            "Sex": "male",
+            "Age": 22.0,
+            "SibSp": 1,
+            "Parch": 0,
+            "Ticket": "A/5 21171",
+            "Fare": 7.25,
+            "Cabin": "",
+            "Embarked": "S"
+        },
+        "prediction": 0,
+        "prediction_label": "Not Survived",
+        "probabilities": [0.7, 0.3]
+    }
+    ```
+    
+    **Use Cases:**
+    - Audit trail for predictions
+    - Model performance analysis
+    - Debugging prediction issues
+    - Data analysis and reporting
+    - Compliance and governance
+    
+    **Limitations:**
+    - History is stored in memory (not persistent)
+    - History is cleared on API restart
+    - No pagination (returns all history)
+    - No filtering or search capabilities
+    
+    **Example Response:**
+    ```json
+    {
+        "history": [
+            {
+                "timestamp": "2024-01-15T10:30:45.123456",
+                "input_data": {...},
+                "prediction": 0,
+                "prediction_label": "Not Survived",
+                "probabilities": [0.7, 0.3]
+            },
+            {
+                "timestamp": "2024-01-15T10:31:12.456789",
+                "input_data": {...},
+                "prediction": 1,
+                "prediction_label": "Survived",
+                "probabilities": [0.2, 0.8]
+            }
+        ]
+    }
+    ```
+    
+    **Note:** For production use, consider implementing persistent storage
+    (database) and pagination for large history datasets.
     """
     logger.info("Request to /history received.")
     return {"history": prediction_history}
