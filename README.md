@@ -15,6 +15,9 @@ A FastAPI-based machine learning API for predicting survival on the Titanic data
 
 ```
 titanic/
+├── data/                         # Dataset files
+├── docs/                         # Documentation of solution architecture diagram
+├── notebooks/                    # Jupyter notebooks
 ├── src/                          # Source code
 │   ├── main.py                   # FastAPI application
 │   ├── preprocess_data.py        # Data preprocessing pipeline
@@ -30,12 +33,10 @@ titanic/
 │       ├── test_api_workflows.py # API workflow tests
 │       ├── test_end_to_end.py    # End-to-end tests
 │       └── test_preprocessing_pipeline.py # Pipeline tests
-├── data/                         # Dataset files
-├── notebooks/                    # Jupyter notebooks
-├── docs/                         # Documentation
 ├── requirements.txt              # Python dependencies
 ├── Dockerfile                    # Docker configuration
 ├── pytest.ini                   # Pytest configuration
+├── LICENSE                       # MIT License file
 └── .gitignore                   # Git ignore rules
 ```
 
@@ -44,11 +45,14 @@ titanic/
 ### Prerequisites
 
 - Python 3.9
-- pip or conda
+- pip
 
 ### Setup
 
 1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/ledizia/titanic
+   ```
 
 2. **Create and activate virtual environment:**
    ```bash
